@@ -77,7 +77,7 @@ object main {
     val accuracy = evaluator.evaluate(predictions)
     println("Test set accuracy = " + accuracy)
 
-    predictions.select("probability").show(10)
+    predictions.select("probability").rdd.take(20).foreach(println)
 
     val duration = (System.nanoTime - StartTime) / 1e9d
     println("Time to Execute: " + duration + " Seconds")
