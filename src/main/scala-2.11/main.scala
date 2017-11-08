@@ -1,3 +1,4 @@
+import java.io._
 import com.typesafe.config.ConfigFactory
 import org.apache.spark.ml.Pipeline
 import org.apache.spark.ml.classification.{NaiveBayes, RandomForestClassifier}
@@ -26,10 +27,15 @@ object main {
     val spark = SparkSession.builder.master("local").appName("Spooky").getOrCreate()
 
     /*load data*/
-    val train = sc.textFile(conf.getString("data.train")).map(_.split("\",\"").map(_.replaceAll("[^\\w\\s]", "")))
-        .map(a => (a(0), a(1), a(2))).toDF("id", "passage", "author")
-    val test = sc.textFile(conf.getString("data.test")).map(_.split("\",\"").map(_.replaceAll("[^\\w\\s]", "")))
-      .map(a => (a(0), a(1))).toDF("id", "passage")
+//    val train = sc.textFile(conf.getString("data.train")).map(_.split("\",\"").map(_.replaceAll("[^\\w\\s]", "")))
+//        .map(a => (a(0), a(1), a(2))).toDF("id", "passage", "author")
+//    val test = sc.textFile(conf.getString("data.test")).map(_.split("\",\"").map(_.replaceAll("[^\\w\\s]", "")))
+//      .map(a => (a(0), a(1), "EAP")).toDF("id", "passage", "author")
+
+    val train = sc.textFile(conf.getString("train.csv")).map(_.split("\",\"").map(_.replaceAll("[^\\w\\s]", "")))
+      .map(a => (a(0), a(1), a(2))).toDF("id", "passage", "author")
+    val test = sc.textFile(conf.getString("test.csv")).map(_.split("\",\"").map(_.replaceAll("[^\\w\\s]", "")))
+      .map(a => (a(0), a(1), "EAP")).toDF("id", "passage", "author")
 
     val indexer = new StringIndexer()
         .setInputCol("author")
@@ -47,37 +53,51 @@ object main {
 
     val nGramTransformers = nGramSettings.map(a => createNgrammar("words", a, 10000, 0.0))
 
-    val Assembler = new VectorAssembler()
+    val assembler = new VectorAssembler()
       .setInputCols(nGramSettings.map(a => a + "-GramVectors"))
       .setOutputCol("features")
 
-    val classi = new NaiveBayes()
+    val classi = new RandomForestClassifier()
         .setLabelCol("label")
           .setPredictionCol("prediction")
           .setProbabilityCol("probability")
 
+//    val stringer = new IndexToString()
+//      .setInputCol("prediction")
+//      .setOutputCol("predictioncats")
+
     val trainStages = Array(indexer, tokenizer) ++
       nGramTransformers.map(_._1) ++
       nGramTransformers.map(_._2) ++
-      Array(Assembler, classi)
+      Array(assembler, classi)
 
     val trainPipeline = new Pipeline().setStages(trainStages)
 
-    val Array(bTrain, bTest) = train.randomSplit(Array(0.1, 0.1), seed = 1234L)
+    //val Array(bTrain, bTest) = train.randomSplit(Array(0.1, 0.1), seed = 1234L)
 
-    val model = trainPipeline.fit(bTrain)
+    val model = trainPipeline.fit(train)
 
-    val predictions = model.transform(bTest)
+    val predictions = model.transform(test)
 
     // Select (prediction, true label) and compute test error
     val evaluator = new MulticlassClassificationEvaluator()
       .setLabelCol("label")
       .setPredictionCol("prediction")
       .setMetricName("accuracy")
-    val accuracy = evaluator.evaluate(predictions)
-    println("Test set accuracy = " + accuracy)
+    //val accuracy = evaluator.evaluate(predictions)
+    //println("Test set accuracy = " + accuracy)
 
-    predictions.select("probability").rdd.take(20).foreach(println)
+    val outputRDD = predictions.select("id","probability").rdd.map(a =>
+      (a(0).asInstanceOf[String],
+      a(1).asInstanceOf[org.apache.spark.ml.linalg.DenseVector].toArray.map(_.toString).mkString(",")
+      )
+    )
+
+    val fileOutput = new File("output.csv")
+    val buff = new BufferedWriter(new FileWriter(fileOutput))
+    buff.write("id,EAP,HPL,MWS\n")
+    outputRDD.collect().foreach(a => buff.write(a._1 + "," + a._2 + "\n"))
+    buff.close()
 
     val duration = (System.nanoTime - StartTime) / 1e9d
     println("Time to Execute: " + duration + " Seconds")
