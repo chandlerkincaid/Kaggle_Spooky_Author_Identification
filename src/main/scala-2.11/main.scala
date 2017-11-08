@@ -5,6 +5,7 @@ import org.apache.spark.ml.evaluation.MulticlassClassificationEvaluator
 import org.apache.spark.ml.feature._
 import org.apache.spark.{SparkConf, SparkContext}
 import org.apache.spark.sql.SparkSession
+import org.apache.spark.sql._
 
 object main {
   def main(args: Array[String]) = {
@@ -16,16 +17,19 @@ object main {
     val SparkConf = new SparkConf().setAppName("main")
     val sc = new SparkContext(SparkConf)
     sc.setLogLevel("WARN")
+    /*workaround for toDF import*/
+    val sqlContext= new org.apache.spark.sql.SQLContext(sc)
+    import sqlContext.implicits._
     /*load configure tool*/
     val conf = ConfigFactory.load()
     /*load spark session*/
     val spark = SparkSession.builder.master("local").appName("Spooky").getOrCreate()
 
     /*load data*/
-    val train = spark.read.format("csv").option("header", "true")
-      .load(conf.getString("data.train")).toDF("id", "passage", "author")
-    val test = spark.read.format("csv").option("header", "true")
-      .load(conf.getString("data.test")).toDF("id", "passage")
+    val train = sc.textFile(conf.getString("data.train")).map(_.split("\",\"").map(_.replaceAll("[^\\w\\s]", "")))
+        .map(a => (a(0), a(1), a(2))).toDF("id", "passage", "author")
+    val test = sc.textFile(conf.getString("data.test")).map(_.split("\",\"").map(_.replaceAll("[^\\w\\s]", "")))
+      .map(a => (a(0), a(1))).toDF("id", "passage")
 
     val indexer = new StringIndexer()
         .setInputCol("author")
@@ -47,7 +51,7 @@ object main {
       .setInputCols(nGramSettings.map(a => a + "-GramVectors"))
       .setOutputCol("features")
 
-    val classi = new RandomForestClassifier()
+    val classi = new NaiveBayes()
         .setLabelCol("label")
           .setPredictionCol("prediction")
           .setProbabilityCol("probability")
