@@ -32,9 +32,9 @@ object main {
 //    val test = sc.textFile(conf.getString("data.test")).map(_.split("\",\"").map(_.replaceAll("[^\\w\\s]", "")))
 //      .map(a => (a(0), a(1), "EAP")).toDF("id", "passage", "author")
 
-    val train = sc.textFile(conf.getString("train.csv")).map(_.split("\",\"").map(_.replaceAll("[^\\w\\s]", "")))
+    val train = sc.textFile("train.csv").map(_.split("\",\"").map(_.replaceAll("[^\\w\\s]", "")))
       .map(a => (a(0), a(1), a(2))).toDF("id", "passage", "author")
-    val test = sc.textFile(conf.getString("test.csv")).map(_.split("\",\"").map(_.replaceAll("[^\\w\\s]", "")))
+    val test = sc.textFile("test.csv").map(_.split("\",\"").map(_.replaceAll("[^\\w\\s]", "")))
       .map(a => (a(0), a(1), "EAP")).toDF("id", "passage", "author")
 
     val indexer = new StringIndexer()
